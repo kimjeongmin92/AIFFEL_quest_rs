@@ -3,7 +3,7 @@
 # AIFFEL Campus Online Code Peer Review Template
 
 - 코더 : 유비
-- 리뷰어 : 송반디
+- 리뷰어 : 김정민
 
 ---
 
