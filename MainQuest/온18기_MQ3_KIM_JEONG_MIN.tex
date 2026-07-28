@@ -1,0 +1,299 @@
+% Compile with pdfLaTeX + Biber
+\documentclass[10pt,letterpaper]{article}
+
+\usepackage[american]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext,newtxmath}
+\usepackage{microtype}
+\usepackage[margin=0.86in,top=0.82in,bottom=0.82in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{xurl}
+\usepackage{csquotes}
+\usepackage[backend=biber,style=apa,sorting=nyt,uniquename=false,giveninits=true,maxbibnames=20]{biblatex}
+\DeclareLanguageMapping{american}{american-apa}
+\addbibresource{references.bib}
+
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue,pdfauthor={KIM, JEONG MIN},pdftitle={An Exploratory Comparison of Scratch Seq2Seq-Style Attention and Pretrained BERT}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\footnotesize AIFFEL RS 18th - MQ3}
+\fancyhead[R]{\footnotesize Low-Resource Korean Lyric Modeling}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\headheight}{13pt}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{0.65em}{\MakeUppercase}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.55em}{}
+\titlespacing*{\section}{0pt}{1.6ex plus .4ex}{.7ex}
+\titlespacing*{\subsection}{0pt}{1.25ex plus .3ex}{.45ex}
+\captionsetup{font=small,labelfont=bf}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.48em}
+\setlist{nosep,leftmargin=1.5em}
+\AtBeginBibliography{\small\setlength{\parskip}{0pt}}
+\renewcommand*{\bibfont}{\small}
+
+\newcommand{\papertitle}{An Exploratory Comparison of Scratch Seq2Seq-Style Attention and Pretrained BERT for Masked-Token Prediction in Low-Resource Korean Lyrics}
+
+\begin{document}
+
+\begin{center}
+{\Large\bfseries\MakeUppercase{\papertitle}\par}
+\vspace{0.9em}
+{\normalsize KIM, JEONG MIN\par}
+{\small AIFFEL, RS 18th, MQ3\par}
+{\small \href{mailto:soboro.commit@gmail.com}{soboro.commit@gmail.com}\par}
+\end{center}
+
+\vspace{0.6em}
+\begin{center}\textbf{ABSTRACT}\end{center}
+\begin{quote}\small
+This exploratory study compares a scratch-trained Seq2Seq-style encoder--decoder attention model with a pretrained BERT masked language model on a small Korean lyric corpus. After removing exact within-song repetitions, 186 lines from eight songs were divided at the song level into six training songs, one validation song, and one test song. Four conditions were evaluated: Seq2Seq Baseline, Seq2Seq Tuned, BERT Zero-shot, and BERT Fine-tuned. Top-1 accuracy was designated as the primary outcome; Top-5 accuracy, cross-entropy loss, and inference time were secondary outcomes. On 20 held-out masked-token items, BERT Zero-shot achieved 30\% Top-1 and 70\% Top-5 accuracy, whereas BERT Fine-tuned achieved 35\% and 80\%, respectively. Seq2Seq Baseline achieved 0\% Top-1 and 15\% Top-5 accuracy, and Seq2Seq Tuned achieved 0\% on both accuracy measures. Although BERT fine-tuning produced a positive numerical change, exact paired comparisons did not establish a stable improvement in this small test set. The weak scratch Seq2Seq results are interpreted in relation to the 32,000-token output vocabulary, fewer than 200 masked training examples, lack of pretraining, and limited target-token coverage rather than as evidence of architectural inferiority. The study is therefore positioned as a modest pilot that clarifies design issues for more controlled low-resource comparisons.
+\end{quote}
+\noindent\textbf{Keywords:} Seq2Seq; BERT; encoder--decoder attention; self-attention; masked language modeling; low-resource NLP; Korean lyrics
+
+\section{Introduction}
+Sequence-to-sequence learning established a general framework in which an encoder maps an input sequence to a hidden representation and a decoder generates an output sequence conditioned on that representation \parencite{sutskever2014}. Recurrent encoder--decoder models can, however, compress too much information into a single fixed-length vector. Attention addresses this bottleneck by allowing the decoder to assign different weights to the encoder states at each prediction step \parencite{bahdanau2015,luong2015}.
+
+The Transformer replaced recurrence with self-attention and enabled more direct modeling of token-to-token relationships \parencite{vaswani2017}. BERT subsequently combined a Transformer encoder with masked language modeling (MLM), learning bidirectional contextual representations from large corpora before adaptation to downstream tasks \parencite{devlin2019}. For Korean NLP, KLUE provides pretrained models and evaluation resources designed for Korean-language understanding \parencite{park2021}.
+
+This project began as an instructional comparison of context vectors, masking, and query--key--value operations. The initial question was whether performance differences between a Seq2Seq attention model and BERT could reveal a structural advantage of one attention mechanism. The implemented conditions, however, differ not only in attention structure but also in pretraining, parameter count, vocabulary knowledge, and the amount of task-specific supervision. The study therefore does not estimate the causal effect of attention architecture. Instead, it documents what occurred under a low-resource lyric setting and identifies the variables that a stronger comparison would need to control.
+
+The study addresses four questions:
+\begin{enumerate}[label=\textbf{RQ\arabic*.}]
+\item How did the four model conditions perform on masked-token prediction?
+\item How did tuning affect Seq2Seq and BERT performance?
+\item How did performance differ between target tokens seen and unseen as training targets?
+\item What qualitative patterns appeared in the attention and query--key visualizations for a representative item?
+\end{enumerate}
+
+\section{Background and Related Work}
+\subsection{Seq2Seq-Style Encoder--Decoder Attention}
+The implemented scratch model uses a bidirectional gated recurrent unit encoder, motivated by recurrent encoder--decoder architectures \parencite{cho2014}. For encoder token state $\mathbf{h}_i$, learned projections produce key and value vectors:
+\begin{equation}
+\mathbf{k}_i=W_K\mathbf{h}_i, \qquad \mathbf{v}_i=W_V\mathbf{h}_i.
+\end{equation}
+The hidden state at the masked position initializes a one-step decoder, which produces query $\mathbf{q}$. Scaled dot-product scores and normalized attention weights are
+\begin{equation}
+e_i=\frac{\mathbf{q}^{\top}\mathbf{k}_i}{\sqrt{d_k}}, \qquad
+\alpha_i=\frac{\exp(e_i)}{\sum_j\exp(e_j)}.
+\end{equation}
+The context vector is the weighted sum
+\begin{equation}
+\mathbf{c}=\sum_i\alpha_i\mathbf{v}_i.
+\end{equation}
+The classifier combines the query and context vector to predict one token from the 32,000-token KLUE BERT vocabulary. This is therefore a Seq2Seq-style masked-token classifier rather than a full sequence-generating translation system.
+
+\subsection{BERT Multi-Head Self-Attention}
+BERT generates query, key, and value matrices from the same hidden-state matrix $H$:
+\begin{equation}
+Q=HW_Q, \qquad K=HW_K, \qquad V=HW_V.
+\end{equation}
+With padding mask $M$, attention is computed as
+\begin{equation}
+\operatorname{Attention}(Q,K,V)=\operatorname{softmax}\!\left(\frac{QK^{\top}}{\sqrt{d_k}}+M\right)V.
+\end{equation}
+Token masking replaces an observed token with \texttt{[MASK]} for prediction, whereas the attention mask prevents \texttt{[PAD]} positions from contributing to attention. Because BERT is bidirectional, it does not use the causal future-token mask employed by autoregressive decoders.
+
+\subsection{Limits of Attention-Based Interpretation}
+Attention weights show how a model distributes weight across positions, but their status as explanations is contested. \textcite{jain2019} demonstrated that alternative attention distributions can sometimes yield similar predictions, whereas \textcite{wiegreffe2019} argued that attention may still provide useful evidence under clearly specified tests. In this paper, attention maps are treated as exploratory internal measurements, not as causal explanations of predictions.
+
+\section{Method}
+\subsection{Design and Analysis Plan}
+Figure~\ref{fig:workflow} summarizes the workflow. Top-1 accuracy was the primary outcome. Top-5 accuracy, cross-entropy loss, and average inference time per item were secondary outcomes. Attention maps, query--key scores, layer entropy, head similarity, and seen--unseen analyses were exploratory.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig1_workflow.png}
+\caption{Experimental workflow from corpus preparation to quantitative and exploratory analyses.}
+\label{fig:workflow}
+\end{figure}
+
+Model selection used validation performance only. The test song was evaluated after model selection. Because the same 20 items were predicted by every condition, model comparisons were paired at the item level.
+
+\subsection{Corpus, Copyright, and Split}
+The private corpus contained eight Korean songs and 239 nonempty lyric lines. Exact duplicate lines within the same song were removed, yielding 186 unique lines. To reduce leakage from repeated choruses, data were split by song rather than by line: six songs for training, one for validation, and one for testing. This choice limits direct repetition across splits but makes the estimates sensitive to the particular validation and test songs.
+
+The lyrics are copyrighted text. Full lyrics and reconstructable examples are not included in the public repository or appendix. Public materials are limited to code, model settings, aggregate statistics, anonymized token-level results, and figures.
+
+\subsection{Tokenization and Mask Construction}
+The \texttt{klue/bert-base} WordPiece tokenizer was used with a maximum sequence length of 48 tokens. Special tokens, \texttt{[UNK]}, continuation subwords beginning with \texttt{\#\#}, and tokens immediately followed by continuation subwords were excluded as masking candidates. Consequently, the prediction unit was a single WordPiece token rather than a whole Korean word or eojeol.
+
+The baseline training set contained 166 masked examples. The expanded tuning set contained 194 examples. Validation and test sets were fixed at 20 examples each. Among the unique test target tokens, 55\% had appeared as masked targets in the expanded training set.
+
+\subsection{Model Conditions}
+Figure~\ref{fig:architecture} contrasts the implemented information flows.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig2_architecture.png}
+\caption{Implemented Seq2Seq-style encoder--decoder attention and BERT self-attention pipelines. The diagram describes the experimental models rather than claiming that the two conditions are capacity matched.}
+\label{fig:architecture}
+\end{figure}
+
+\textbf{Seq2Seq Baseline.} The baseline used a 128-dimensional embedding, a bidirectional GRU with 128 hidden units per direction, dropout of .20, AdamW optimization, and early stopping based on validation loss.
+
+\textbf{Seq2Seq Tuned.} Two candidates varied embedding dimension, hidden dimension, dropout, learning rate, batch size, and label smoothing. Both reached 15\% validation Top-5 accuracy; the T2\_medium configuration was selected because it had the lower validation loss (9.2114 vs. 9.2772). T2\_medium used 192-dimensional embeddings and hidden states, dropout of .35, learning rate $3\times10^{-4}$, batch size 8, and label smoothing of .10.
+
+\textbf{BERT Zero-shot.} The pretrained \texttt{klue/bert-base} masked language model was evaluated without lyric-specific parameter updates.
+
+\textbf{BERT Fine-tuned.} Token embeddings and the lower eight encoder layers were frozen; the upper four encoder layers and MLM head were updated for two epochs. Batch size was 8, learning rate was $2\times10^{-5}$, weight decay was .01, and label smoothing was .05. Models were implemented with PyTorch and Transformers \parencite{paszke2019,wolf2020}.
+
+\subsection{Evaluation and Statistical Analysis}
+Top-1 accuracy counted whether the highest-probability token matched the target. Top-5 accuracy counted whether the target appeared among the five highest-probability tokens. Cross-entropy loss and mean inference time were also recorded.
+
+With only 20 test items, one correct item changes accuracy by five percentage points. Accuracy is therefore reported with counts and Wilson 95\% confidence intervals \parencite{newcombe1998}. Paired condition differences were examined with the exact McNemar test \parencite{mcnemar1947} and a 20,000-replicate item-level paired bootstrap \parencite{efron1993}. These analyses are exploratory; no multiplicity correction was applied, and $p$ values are not treated as definitive evidence.
+
+\section{Results}
+\subsection{Overall Performance}
+Table~\ref{tab:performance} and Figure~\ref{fig:accuracy} summarize test performance.
+
+\begin{table}[t]
+\centering
+\caption{Test performance on 20 masked-token items}
+\label{tab:performance}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Condition & Loss & Top-1 & Top-1 95\% CI & Top-5 & Top-5 95\% CI \\
+\midrule
+Seq2Seq Baseline & 9.4770 & 0/20 (0\%) & [0.0, 16.1] & 3/20 (15\%) & [5.2, 36.0] \\
+Seq2Seq Tuned & 8.0104 & 0/20 (0\%) & [0.0, 16.1] & 0/20 (0\%) & [0.0, 16.1] \\
+BERT Zero-shot & 2.9749 & 6/20 (30\%) & [14.5, 51.9] & 14/20 (70\%) & [48.1, 85.5] \\
+BERT Fine-tuned & 2.6456 & 7/20 (35\%) & [18.1, 56.7] & 16/20 (80\%) & [58.4, 91.9] \\
+\bottomrule
+\end{tabular}
+\begin{flushleft}\footnotesize Note. Confidence intervals are Wilson intervals. Mean inference time per item was 0.7, 0.8, 2.3, and 2.8 ms, respectively.\end{flushleft}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.92\linewidth]{figures/fig3_accuracy_ci.png}
+\caption{Top-1 and Top-5 accuracy with Wilson 95\% confidence intervals. Counts above the bars show the number of correct predictions out of 20 items.}
+\label{fig:accuracy}
+\end{figure}
+
+BERT Fine-tuned produced the highest observed values: 7/20 Top-1 and 16/20 Top-5. BERT Zero-shot produced 6/20 and 14/20, respectively. The Seq2Seq Baseline produced no Top-1 correct predictions and three Top-5 correct predictions. The tuned Seq2Seq condition produced no Top-1 or Top-5 correct predictions. These are descriptive results for the selected test song; they do not isolate attention architecture as a causal factor.
+
+\subsection{Paired Comparisons}
+Table~\ref{tab:paired} reports item-level paired comparisons.
+
+\begin{table}[t]
+\centering
+\caption{Paired differences between model conditions}
+\label{tab:paired}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+Comparison & Metric & Difference & Bootstrap 95\% CI & A only/B only & Exact $p$ \\
+\midrule
+Seq2Seq tuned $-$ baseline & Top-1 & 0 pp & [0, 0] & 0/0 & 1.000 \\
+Seq2Seq tuned $-$ baseline & Top-5 & $-15$ pp & [$-30$, 0] & 3/0 & .250 \\
+BERT zero-shot $-$ scratch baseline & Top-1 & 30 pp & [10, 50] & 0/6 & .031 \\
+BERT zero-shot $-$ scratch baseline & Top-5 & 55 pp & [35, 75] & 1/12 & .001 \\
+BERT fine-tuned $-$ zero-shot & Top-1 & 5 pp & [$-10$, 20] & 1/2 & 1.000 \\
+BERT fine-tuned $-$ zero-shot & Top-5 & 10 pp & [0, 25] & 0/2 & .500 \\
+\bottomrule
+\end{tabular}
+\begin{flushleft}\footnotesize Note. ``A only/B only'' gives the number of items answered correctly only by the first or second condition. The BERT--Seq2Seq contrasts are not interpreted as causal architecture effects because pretraining and capacity are confounded.\end{flushleft}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.82\linewidth]{figures/fig5_paired_effects.png}
+\caption{Paired accuracy differences with item-level bootstrap 95\% confidence intervals. Positive values favor the second condition named in each contrast.}
+\label{fig:paired}
+\end{figure}
+
+Fine-tuned BERT exceeded zero-shot BERT by one Top-1 item and two Top-5 items. The direction was positive, but the Top-1 interval crossed zero and the exact test was not informative with only three discordant items. The Top-5 result had two discordant items, both favoring fine-tuning, but the exact $p$ value remained .50. The evidence therefore supports the wording \emph{a small numerical improvement was observed}, not a claim of a stable fine-tuning effect.
+
+\subsection{Tuning Outcomes}
+Figure~\ref{fig:learning} shows the recorded training and validation losses. For T2\_medium, training loss continued to decline after the minimum validation loss at epoch 3. The selected tuned model reduced test loss relative to the baseline (8.0104 vs. 9.4770) but reduced Top-5 accuracy from 15\% to 0\%. Lower cross-entropy therefore did not translate into better target ranking on the test song. This negative tuning outcome is retained because it illustrates the difference between optimization and generalization.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.93\linewidth]{figures/fig4_learning_curves.png}
+\caption{Training and validation loss for the selected Seq2Seq tuning trial and BERT fine-tuning. The short trajectories and single validation song limit interpretation.}
+\label{fig:learning}
+\end{figure}
+
+\subsection{Seen and Unseen Target Tokens}
+A target was labeled \emph{seen} if it had appeared as a masked training target in the expanded training set. Figure~\ref{fig:seen} shows Top-5 accuracy by this exposure status. The Seq2Seq Baseline achieved 27.3\% for seen targets and 0\% for unseen targets. BERT Fine-tuned achieved 81.8\% and 77.8\%, respectively. This pattern is consistent with pretrained lexical knowledge being useful beyond the small task-specific target set, but the subgroups contain only 11 and 9 items and are reported descriptively.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=.88\linewidth]{figures/fig6_seen_unseen.png}
+\caption{Top-5 accuracy for target tokens seen or unseen as masked targets during task-specific training.}
+\label{fig:seen}
+\end{figure}
+
+\subsection{Exploratory Attention Analysis}
+For a representative item, the Seq2Seq decoder query and the BERT \texttt{[MASK]} query assigned different attention distributions across the Korean WordPiece tokens (Figure~\ref{fig:heatmaps}). Figure~\ref{fig:qk} presents the corresponding pre-softmax scaled query--key scores. Because the two models use different projection spaces and dimensionalities, score magnitudes are not compared across models; only within-model token rankings are considered.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig7_attention_heatmaps.png}
+\caption{Attention distributions for one held-out lyric line. Korean WordPiece tokens are preserved because they are the actual model inputs.}
+\label{fig:heatmaps}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig8_qk_scores.png}
+\caption{Pre-softmax scaled query--key scores for the same item. Absolute values are not directly comparable across model families.}
+\label{fig:qk}
+\end{figure}
+
+The BERT layer- and head-level summaries in Figure~\ref{fig:layerhead} illustrate that attention concentration changes across layers and that some last-layer heads have similar attention patterns. These measurements are useful for inspecting the implementation but are not treated as evidence that attention alone explains the predicted token.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig9_layer_head.png}
+\caption{Exploratory BERT attention summaries: layer-wise concentration and cosine similarity between last-layer head distributions.}
+\label{fig:layerhead}
+\end{figure}
+
+\section{Discussion}
+\subsection{What the Results Support}
+The clearest descriptive result is that the pretrained BERT conditions performed better than the scratch Seq2Seq conditions on the selected test song. BERT Zero-shot already achieved 70\% Top-5 accuracy without lyric-specific updates, suggesting that pretrained contextual and lexical knowledge provided a strong starting point in this low-resource setting.
+
+This finding should not be restated as proof that self-attention is inherently superior to encoder--decoder attention. The BERT conditions had large-scale pretraining, substantially greater capacity, and pretrained output weights, whereas the Seq2Seq classifier was trained from fewer than 200 masked examples to discriminate among 32,000 vocabulary items. The comparison is therefore practical rather than capacity matched.
+
+\subsection{Fine-Tuning and Its Uncertainty}
+The fine-tuned BERT condition added one Top-1 and two Top-5 correct predictions. This is a potentially useful direction for follow-up work, but the uncertainty is substantial. With 20 items, one item equals five percentage points, and the exact paired tests do not establish a reliable effect. Repeated splits and more test items are required before concluding that lyric-specific fine-tuning consistently improves performance.
+
+\subsection{Value of the Negative Seq2Seq Result}
+The tuned Seq2Seq condition is informative precisely because the intended improvement did not occur. Lower test loss accompanied worse Top-5 accuracy. Possible explanations include overfitting to a single validation song, inadequate supervision for the large output space, and unstable ranking among low-probability vocabulary items. Reporting this result prevents the project from becoming a selective success narrative and identifies more defensible next steps, such as restricting the candidate vocabulary or initializing the scratch model with pretrained embeddings.
+
+\subsection{Methodological and Educational Contribution}
+The project does not introduce a novel architecture. Its contribution is methodological and instructional: it connects equations for queries, keys, values, and context vectors to executable tensors; demonstrates why pretraining is a major confound in model-family comparisons; and shows why counts, confidence intervals, and paired item-level analyses matter in very small evaluations. This is an appropriate contribution for a graduate-level exploratory study when the claims remain proportional to the evidence.
+
+\section{Limitations and Future Work}
+The study has several constraints that define the next experiments rather than invalidate the present pilot. First, eight songs and one held-out test song do not support stable population-level estimates. Second, a single random seed does not characterize optimization variability. Third, WordPiece-token prediction is not equivalent to whole-word or sentence understanding. Fourth, the model families are not matched for pretraining, capacity, or output-layer initialization. Fifth, copyrighted lyrics cannot be redistributed, limiting full data reproducibility. Finally, attention weights are not causal explanations.
+
+The most direct extension is leave-one-song-out evaluation, in which each song serves as the test song once. Each fold should be repeated with multiple seeds. A second extension should use openly licensed Korean text so that the corpus can be shared. For a more controlled architecture comparison, the Seq2Seq output space could be restricted to a candidate vocabulary, or both model families could use comparable pretrained embeddings. Whole-word masking would also provide a more interpretable linguistic unit. Finally, attention-based observations could be compared with occlusion or gradient-based analyses.
+
+\section{Conclusion}
+This study implemented and compared a scratch Seq2Seq-style attention model and pretrained BERT conditions for masked-token prediction in a small Korean lyric corpus. BERT produced higher observed accuracy, and fine-tuning yielded a small numerical increase. The fine-tuning effect was not stable in exact paired analyses, and the large BERT--Seq2Seq gap cannot be attributed to attention architecture alone. The unsuccessful Seq2Seq tuning result further showed that lower loss does not guarantee improved token ranking or cross-song generalization.
+
+The value of the study lies less in claiming a superior model than in clarifying what a low-resource comparison can and cannot support. It demonstrates a complete experimental pipeline, preserves negative findings, and turns the study's constraints into specific requirements for a more controlled follow-up.
+
+\section*{Data and Code Availability}
+The lyric text is not distributed because it is copyrighted. A public notebook may include code, model settings, aggregate results, and anonymized token-level outputs while loading the lyrics from a private local file. Reproducibility metadata should include the random seed, package versions, hardware, song-level split, number of masked examples, model-selection rule, and number of test evaluations.
+
+\section*{AI-Assisted Writing Disclosure}
+Generative AI tools were used to support code review, document organization, and language editing. The researcher remains responsible for the experimental execution, verification of numerical results, interpretation, citations, and final manuscript.
+
+\clearpage
+\printbibliography[title={REFERENCES}]
+\end{document}
